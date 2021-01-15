@@ -4,22 +4,9 @@ import signal
 import threading
 import socket
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
-PORT = 8004      # Port to listen on (non-privileged ports are > 1023)
+PORT = 8000      # Port to listen on (non-privileged ports are > 1023)
 
-# with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-#     s.bind((HOST, PORT))
-#     s.listen()
-#     print(s)
-#     conn, addr = s.accept()
-#     print(conn)
-#     print(addr)
-#     with conn:
-#         print('Connected by', addr)
-#         while True:
-#             data = conn.recv(1024)
-#             if data:
-#                 conn.sendall(data)
-#                 print('data: ', data)
+blacklist_domains = ['www.instagram.com', 'www.youtube.com']
 
 
 class Server:
@@ -47,7 +34,6 @@ class Server:
             # d.start()
             data = clientSocket.recv(4096)
             print('data to send: ', data)
-            clientSocket.close()
             data_string = str(data, 'utf-8')
             # parse the first line
             first_line = data_string.split('\n')[0]
@@ -82,6 +68,14 @@ class Server:
                 webserver = temp[:port_pos]
 
             print('web server: ', webserver)
+
+            # check if website has been blacklisted
+            for i in range(0, len(blacklist_domains)):
+                if blacklist_domains[i] in url:
+                    print('url blacklisted')
+                    clientSocket.close()
+                    break
+
             safe_url = url.find('googlevideo')
             print(safe_url)
             if url.find('googlevideo') == -1:
@@ -97,7 +91,8 @@ class Server:
                     print('received data from server: ', dataFromServer)
 
                     if (len(dataFromServer) > 0):
-                        self.serverSocket.send(data)  # send to browser/client
+                        # send to browser/client
+                        self.serverSocket.sendall(data)
                     else:
                         break
 
