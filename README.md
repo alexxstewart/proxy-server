@@ -19,4 +19,4 @@ A simple proxy server to handle http requests
 
 8) You should be able to see requests as you navigate through http websites.
 
-* Note that this proxy only works for http websites.
+* Note that this proxy only works for http websites. Most popular websites use the https transfer protocol which differs to http due the secure nature of it. For this project I simply wanted to learn how proxies work so https proxying is not supported, hence https websites will not working while the proxy is running*
