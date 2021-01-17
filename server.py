@@ -1,100 +1,110 @@
-# import socket
-
-import signal
-import threading
+import _thread
 import socket
+import sys
+
+# AUTHOR: Alex Stewart
+
+# GLOBAL VARS
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
-PORT = 8000      # Port to listen on (non-privileged ports are > 1023)
+PORT = 8000  # Port to listen on (non-privileged ports are > 1023)
 
 blacklist_domains = ['www.instagram.com', 'www.youtube.com']
+
+# Class server handles proxy functionality
 
 
 class Server:
     def __init__(self):
-
         # Create a TCP socket
-        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Re-use the socket
-        self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.setsockopt(
+            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # bind the socket to a public host, and a port
-        self.serverSocket.bind((HOST, PORT))
+        self.server_socket.bind((HOST, PORT))
 
-        self.serverSocket.listen()  # become a server socket
-        self.__clients = {}
+        self.server_socket.listen(20)  # allow up to 20 client connections
 
-        while True:
-            print('------------------------------------')
-            # Establish the connection
-            (clientSocket, client_address) = self.serverSocket.accept()
+    def handle_request(self, client_socket, client_address):
+        client_socket.setblocking(True)
 
-            # d = threading.Thread(name=self._getClientName(client_address),target = self.proxy_thread, args = (clientSocket, client_address))
-            # d.setDaemon(True)
-            # d.start()
-            data = clientSocket.recv(4096)
-            print('data to send: ', data)
-            data_string = str(data, 'utf-8')
-            # parse the first line
-            first_line = data_string.split('\n')[0]
+        data = client_socket.recv(4096)
 
-            # get url
-            url = first_line.split(' ')[1]
-            print('url: ', url)
+        # convert the byte data to string to extract the url info
+        data_string = str(data, 'utf-8')
 
-            http_pos = url.find("://")  # find pos of ://
-            if (http_pos == -1):
-                temp = url
+        # parse the first line
+        first_line = data_string.split('\n')[0]
+
+        # get url
+        url = first_line.split(' ')[1]
+
+        http_pos = url.find("://")  # find pos of ://
+        if (http_pos == -1):
+            temp = url
+        else:
+            temp = url[(http_pos+3):]  # get the rest of url
+
+        port_pos = temp.find(":")  # get the position of the port
+
+        # find end of web server
+        webserver_pos = temp.find("/")
+        if webserver_pos == -1:
+            webserver_pos = len(temp)
+
+        webserver = ""
+        port = -1
+        if (port_pos == -1 or webserver_pos < port_pos):
+            # default port
+            port = 80
+            webserver = temp[:webserver_pos]
+
+        else:  # specific port
+            port = int((temp[(port_pos+1):])[:webserver_pos-port_pos-1])
+            webserver = temp[:port_pos]
+
+        # create the server to send the client data to
+        serverToSend = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serverToSend.settimeout(5)  # set the timeout to 5 seconds
+        serverToSend.connect((webserver, port))
+        serverToSend.sendall(data)  # send all the data
+
+        print('url: ', url)
+        print('webserver: ', webserver)
+
+        while 1:
+            # receive data from web server
+            print('WAITING ON DATA FROM: ', url)
+            dataFromServer = serverToSend.recv(1024)
+
+            if (len(dataFromServer) > 0):
+                # send to browser/client
+                print('received data from server: ', dataFromServer)
+                client_socket.send(dataFromServer)
             else:
-                temp = url[(http_pos+3):]  # get the rest of url
+                break
 
-            port_pos = temp.find(":")  # find the port pos (if any)
+    def start(self):
 
-            # find end of web server
-            webserver_pos = temp.find("/")
-            if webserver_pos == -1:
-                webserver_pos = len(temp)
-
-            webserver = ""
-            port = -1
-            if (port_pos == -1 or webserver_pos < port_pos):
-
-                # default port
-                port = 80
-                webserver = temp[:webserver_pos]
-
-            else:  # specific port
-                port = int((temp[(port_pos+1):])[:webserver_pos-port_pos-1])
-                webserver = temp[:port_pos]
-
-            print('web server: ', webserver)
-
-            # check if website has been blacklisted
-            for i in range(0, len(blacklist_domains)):
-                if blacklist_domains[i] in url:
-                    print('url blacklisted')
-                    clientSocket.close()
-                    break
-
-            safe_url = url.find('googlevideo')
-            print(safe_url)
-            if url.find('googlevideo') == -1:
-                serverToSend = socket.socket(
-                    socket.AF_INET, socket.SOCK_STREAM)
-                serverToSend.settimeout(100000)
-                serverToSend.connect((webserver, port))
-                serverToSend.sendall(data)
-
-                while 1:
-                    # receive data from web server
-                    dataFromServer = serverToSend.recv(100000000)
-                    print('received data from server: ', dataFromServer)
-
-                    if (len(dataFromServer) > 0):
-                        # send to browser/client
-                        self.serverSocket.sendall(data)
-                    else:
-                        break
+        # set up a loop which creates a new thread for each request
+        while True:
+            # create the new thread and pass in the handle request function as well as socket and address
+            _thread.start_new_thread(
+                self.handle_request, self.server_socket.accept())
 
 
 server = Server()
+
+if __name__ == '__main__':
+    server = Server()
+    try:
+        server.start()
+    except KeyboardInterrupt:
+        # stop the server
+        print("Ctrl C - Stopping server")
+
+        # close the socket
+        server.server_socket.close()
+        sys.exit(1)
