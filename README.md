@@ -1,4 +1,4 @@
-# blockify
+# proxy-server
 A simple proxy server to handle http requests
 
 ## TO RUN IN WINDOWS
